@@ -5,6 +5,8 @@ export class AimInputController {
   private readonly cursors: Phaser.Types.Input.Keyboard.CursorKeys;
   private readonly fireKey: Phaser.Input.Keyboard.Key;
   private readonly escapeKey: Phaser.Input.Keyboard.Key;
+  private readonly undoKey: Phaser.Input.Keyboard.Key;
+  private readonly backspaceKey: Phaser.Input.Keyboard.Key;
   private readonly aimController = new AimController();
   private angleDegrees = 45;
 
@@ -16,6 +18,8 @@ export class AimInputController {
     this.cursors = scene.input.keyboard.createCursorKeys();
     this.fireKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.escapeKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+    this.undoKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
+    this.backspaceKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.BACKSPACE);
   }
 
   setAngle(angleDegrees: number): void {
@@ -38,6 +42,18 @@ export class AimInputController {
     return this.angleDegrees;
   }
 
+  getAimDirection(): -1 | 0 | 1 {
+    if (this.cursors.up.isDown && !this.cursors.down.isDown) {
+      return 1;
+    }
+
+    if (this.cursors.down.isDown && !this.cursors.up.isDown) {
+      return -1;
+    }
+
+    return 0;
+  }
+
   getMoveDirection(): -1 | 0 | 1 {
     if (this.cursors.left.isDown && !this.cursors.right.isDown) {
       return -1;
@@ -56,5 +72,9 @@ export class AimInputController {
 
   consumeEscape(): boolean {
     return Phaser.Input.Keyboard.JustDown(this.escapeKey);
+  }
+
+  consumeUndo(): boolean {
+    return Phaser.Input.Keyboard.JustDown(this.undoKey) || Phaser.Input.Keyboard.JustDown(this.backspaceKey);
   }
 }

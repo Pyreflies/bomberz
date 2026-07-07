@@ -5,6 +5,7 @@ import type { MoveCommand } from "../models/MoveCommand";
 import type { ShotCommand } from "../models/ShotCommand";
 import type { ShotResolvedEvent } from "../models/ShotResolvedEvent";
 import { clamp } from "../../shared/math";
+import { AimController } from "./AimController";
 import { DamageCalculator } from "./DamageCalculator";
 import type { MatchStateStore } from "./MatchStateStore";
 import { MovementService } from "./MovementService";
@@ -12,7 +13,9 @@ import { ProjectileSimulator } from "./ProjectileSimulator";
 import { TeamResolver } from "./TeamResolver";
 import { TerrainCollisionService } from "./TerrainCollisionService";
 import { TurnOrderService } from "./TurnOrderService";
+import { UndoService } from "./UndoService";
 import { WeaponRegistry } from "./WeaponRegistry";
+import { WindService } from "./WindService";
 import { WinConditionChecker } from "./WinConditionChecker";
 
 export class LocalMatchClient {
@@ -20,9 +23,12 @@ export class LocalMatchClient {
   private readonly weaponRegistry = new WeaponRegistry();
   private readonly projectileSimulator = new ProjectileSimulator();
   private readonly terrainCollisionService = new TerrainCollisionService();
+  private readonly aimController = new AimController();
   private readonly damageCalculator = new DamageCalculator(new TeamResolver());
   private readonly movementService = new MovementService();
+  private readonly undoService = new UndoService();
   private readonly turnOrderService = new TurnOrderService();
+  private readonly windService = new WindService();
   private readonly winConditionChecker = new WinConditionChecker();
 
   constructor(store: MatchStateStore) {
@@ -47,6 +53,36 @@ export class LocalMatchClient {
     return nextState;
   }
 
+  updateActivePlayerAimElevation(aimElevationDegrees: number): MatchState {
+    const state = this.store.getState();
+
+    if (state.phase !== "Aiming") {
+      return state;
+    }
+
+    this.undoService.recordSnapshot(state, state.activeSlotId);
+
+    const nextState: MatchState = {
+      ...state,
+      players: state.players.map((player) => {
+        if (player.slotId !== state.activeSlotId) {
+          return player;
+        }
+
+        const nextElevation = this.aimController.clampElevation(aimElevationDegrees);
+
+        return {
+          ...player,
+          aimElevationDegrees: nextElevation,
+          angleDegrees: this.aimController.getActualAngleDegrees(player.facingDirection, nextElevation),
+        };
+      }),
+    };
+
+    this.store.setState(nextState);
+    return nextState;
+  }
+
   startChargingPower(slotId: string, lockedAngleDegrees: number): MatchState {
     const state = this.store.getState();
 
@@ -62,14 +98,32 @@ export class LocalMatchClient {
       ),
     };
 
+    this.undoService.reset();
     this.store.setState(nextState);
     return nextState;
   }
 
   moveActivePlayer(command: MoveCommand): MatchState {
+    this.undoService.recordSnapshot(this.store.getState(), command.slotId);
     const nextState = this.movementService.moveActivePlayer(this.store.getState(), command);
     this.store.setState(nextState);
     return nextState;
+  }
+
+  undoLastPreShotAction(matchId: string, slotId: string): MatchState {
+    const state = this.store.getState();
+
+    if (state.matchId !== matchId) {
+      return state;
+    }
+
+    const nextState = this.undoService.undoLast(state, slotId);
+    this.store.setState(nextState);
+    return nextState;
+  }
+
+  getUndoCount(): number {
+    return this.undoService.getUndoCount();
   }
 
   submitShot(command: ShotCommand): ShotResolvedEvent {
@@ -105,6 +159,7 @@ export class LocalMatchClient {
       power: actualPower,
       speed: weapon.projectileSpeed,
       gravity: weapon.gravity,
+      wind: state.wind,
       maxSteps: 420,
       deltaSeconds: 1 / 60,
     });
@@ -150,16 +205,20 @@ export class LocalMatchClient {
 
     const nextQueue = this.turnOrderService.advanceTurn(damagedState);
     const nextTurnSlotId = this.turnOrderService.getActiveSlotId(nextQueue);
+    const nextTurnNumber = damagedState.turnNumber + 1;
     const nextState: MatchState = {
       ...damagedState,
       turnQueue: nextQueue,
       activeSlotId: nextTurnSlotId,
       phase: "Aiming",
+      turnNumber: nextTurnNumber,
+      wind: this.windService.generateWindForTurn(nextTurnNumber),
       players: damagedState.players.map((player) =>
         player.slotId === nextTurnSlotId ? { ...player, movedDistanceThisTurn: 0 } : player,
       ),
     };
 
+    this.undoService.reset();
     this.store.setState(nextState);
 
     return {

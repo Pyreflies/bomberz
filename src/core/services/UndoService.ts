@@ -30,6 +30,7 @@ export class UndoService {
     this.snapshots.push({
       slotId,
       x: player.x,
+      facingDirection: player.facingDirection,
       aimElevationDegrees: player.aimElevationDegrees,
       movedDistanceThisTurn: player.movedDistanceThisTurn,
     });
@@ -59,13 +60,14 @@ export class UndoService {
         }
 
         const angleDegrees = this.aimController.getActualAngleDegrees(
-          player.facingDirection,
+          snapshot.facingDirection,
           snapshot.aimElevationDegrees,
         );
 
         return {
           ...player,
           x: snapshot.x,
+          facingDirection: snapshot.facingDirection,
           aimElevationDegrees: snapshot.aimElevationDegrees,
           angleDegrees,
           movedDistanceThisTurn: snapshot.movedDistanceThisTurn,

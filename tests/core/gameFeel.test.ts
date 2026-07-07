@@ -42,6 +42,27 @@ describe("MovementService", () => {
     expect(moved.players[0]?.movedDistanceThisTurn).toBeGreaterThan(0);
   });
 
+  it("sets active player facing direction when moving left or right", () => {
+    const state = createDuelMatch();
+    const movedLeft = new MovementService().moveActivePlayer(state, {
+      matchId: state.matchId,
+      slotId: state.activeSlotId,
+      direction: -1,
+      deltaSeconds: 0.25,
+    });
+    const movedRight = new MovementService().moveActivePlayer(movedLeft, {
+      matchId: state.matchId,
+      slotId: state.activeSlotId,
+      direction: 1,
+      deltaSeconds: 0.25,
+    });
+
+    expect(movedLeft.players[0]?.facingDirection).toBe(-1);
+    expect(movedLeft.players[0]?.angleDegrees).toBe(135);
+    expect(movedRight.players[0]?.facingDirection).toBe(1);
+    expect(movedRight.players[0]?.angleDegrees).toBe(45);
+  });
+
   it("does not move an inactive player", () => {
     const state = createDuelMatch();
     const inactive = state.players[1];
@@ -58,6 +79,7 @@ describe("MovementService", () => {
     });
 
     expect(moved.players[1]?.x).toBe(inactive.x);
+    expect(moved.players[1]?.facingDirection).toBe(inactive.facingDirection);
   });
 
   it("does not exceed max movement distance per turn", () => {
@@ -82,6 +104,7 @@ describe("MovementService", () => {
     });
 
     expect(moved.players[0]?.x).toBe(state.players[0]?.x);
+    expect(moved.players[0]?.facingDirection).toBe(state.players[0]?.facingDirection);
   });
 
   it("does not move outside map bounds", () => {
@@ -99,6 +122,7 @@ describe("MovementService", () => {
     });
 
     expect(moved.players[0]?.x).toBe(PLAYER_RADIUS);
+    expect(moved.players[0]?.facingDirection).toBe(-1);
   });
 });
 
@@ -120,6 +144,34 @@ describe("AimController", () => {
     expect(aim.getActualAngleDegrees(1, 45)).toBe(45);
     expect(aim.getActualAngleDegrees(-1, 45)).toBe(135);
     expect(aim.getActualAngleDegrees(-1, 46)).toBe(134);
+  });
+
+  it("keeps up/down as elevation changes independent of facing direction", () => {
+    const aim = new AimController();
+    const higher = aim.increaseAngleByDelta(45, 1);
+    const lower = aim.decreaseAngleByDelta(45, 1);
+
+    expect(higher).toBeGreaterThan(45);
+    expect(lower).toBeLessThan(45);
+    expect(aim.getActualAngleDegrees(-1, higher)).toBeLessThan(135);
+    expect(aim.getActualAngleDegrees(-1, lower)).toBeGreaterThan(135);
+  });
+});
+
+describe("MatchFactory facing defaults", () => {
+  it("defaults left-side spawns to face right and right-side spawns to face left", () => {
+    const duel = createDuelMatch();
+    const teamBattle = matchFactory.createMatchFromRoom(matchFactory.createLocalRoom(GameMode.TeamBattle, 4, false));
+    const freeForAll = matchFactory.createMatchFromRoom(matchFactory.createLocalRoom(GameMode.FreeForAll, 4, false));
+
+    for (const match of [duel, teamBattle, freeForAll]) {
+      const mapCenterX = 1280 / 2;
+
+      for (const player of match.players) {
+        expect(player.aimElevationDegrees).toBe(45);
+        expect(player.facingDirection).toBe(player.x < mapCenterX ? 1 : -1);
+      }
+    }
   });
 });
 
@@ -173,6 +225,36 @@ describe("LocalMatchClient movement and charged shots", () => {
 
     expect(event.trajectory.length).toBeGreaterThan(1);
     expect(event.shooterSlotId).toBe("slot-1");
+  });
+
+  it("fires in the current facing direction after movement updates actual angle", () => {
+    const store = new MatchStateStore();
+    store.setState(createDuelMatch());
+    const client = new LocalMatchClient(store);
+
+    client.moveActivePlayer({
+      matchId: store.getState().matchId,
+      slotId: "slot-1",
+      direction: -1,
+      deltaSeconds: 0,
+    });
+    const shooter = store.getState().players[0];
+
+    if (!shooter) {
+      throw new Error("Expected shooter");
+    }
+
+    const event = client.submitShot({
+      matchId: store.getState().matchId,
+      shooterSlotId: shooter.slotId,
+      weaponId: shooter.weaponId,
+      angleDegrees: shooter.angleDegrees,
+      power: 50,
+    });
+
+    expect(shooter.facingDirection).toBe(-1);
+    expect(shooter.angleDegrees).toBe(135);
+    expect(event.trajectory[1]?.x ?? shooter.x).toBeLessThan(shooter.x);
   });
 
   it("does not leave a continuing shot in ProjectileInFlight phase", () => {
@@ -299,7 +381,7 @@ describe("LocalMatchClient aim, undo, and wind", () => {
     expect(store.getState().players[1]?.angleDegrees).toBe(134);
   });
 
-  it("undo restores x, aim elevation, and moved distance without restoring HP", () => {
+  it("undo restores x, facing direction, aim elevation, and moved distance without restoring HP", () => {
     const store = new MatchStateStore();
     const damaged = {
       ...createDuelMatch(),
@@ -313,12 +395,15 @@ describe("LocalMatchClient aim, undo, and wind", () => {
     client.moveActivePlayer({
       matchId: store.getState().matchId,
       slotId: "slot-1",
-      direction: 1,
+      direction: -1,
       deltaSeconds: 0.5,
     });
+    expect(store.getState().players[0]?.facingDirection).toBe(-1);
     client.undoLastPreShotAction(store.getState().matchId, "slot-1");
 
     expect(store.getState().players[0]?.x).toBe(damaged.players[0]?.x);
+    expect(store.getState().players[0]?.facingDirection).toBe(1);
+    expect(store.getState().players[0]?.angleDegrees).toBe(45);
     expect(store.getState().players[0]?.aimElevationDegrees).toBe(45);
     expect(store.getState().players[0]?.movedDistanceThisTurn).toBe(0);
     expect(store.getState().players[0]?.hp).toBe(50);

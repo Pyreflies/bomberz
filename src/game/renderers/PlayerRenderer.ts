@@ -8,6 +8,7 @@ interface PlayerView {
   hpBack: Phaser.GameObjects.Rectangle;
   hpFill: Phaser.GameObjects.Rectangle;
   aimLine: Phaser.GameObjects.Line;
+  facingMarker: Phaser.GameObjects.Line;
 }
 
 export class PlayerRenderer {
@@ -36,6 +37,10 @@ export class PlayerRenderer {
       view.hpFill.setSize(Math.max(0, 60 * hpRatio), 7);
       view.hpFill.setFillStyle(player.isAlive ? 0x22c55e : 0x64748b);
       view.aimLine.setVisible(isActive && player.isAlive);
+      view.facingMarker.setVisible(player.isAlive);
+      view.facingMarker.setPosition(player.x, player.y);
+      view.facingMarker.setTo(0, -6, player.facingDirection * 18, -6);
+      view.facingMarker.setStrokeStyle(4, isActive ? 0xfacc15 : 0xe2e8f0, player.isAlive ? 1 : 0.35);
 
       const radians = (player.angleDegrees * Math.PI) / 180;
       view.aimLine.setTo(0, 0, Math.cos(radians) * 100, -Math.sin(radians) * 100);
@@ -53,7 +58,8 @@ export class PlayerRenderer {
     const hpBack = this.scene.add.rectangle(player.x, player.y - 36, 64, 11, 0x0f172a).setDepth(11);
     const hpFill = this.scene.add.rectangle(player.x, player.y - 36, 60, 7, 0x22c55e).setDepth(12);
     const aimLine = this.scene.add.line(player.x, player.y, 0, 0, 48, -48, 0xfacc15).setOrigin(0, 0).setLineWidth(3).setDepth(12);
-    const view = { body, name, hpBack, hpFill, aimLine };
+    const facingMarker = this.scene.add.line(player.x, player.y, 0, -6, 18, -6, 0xe2e8f0).setOrigin(0, 0).setLineWidth(4).setDepth(13);
+    const view = { body, name, hpBack, hpFill, aimLine, facingMarker };
 
     this.views.set(player.slotId, view);
     return view;

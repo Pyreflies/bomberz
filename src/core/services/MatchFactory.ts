@@ -53,10 +53,7 @@ export class MatchFactory {
           throw new Error(`Missing spawn point for slot ${slot.slotIndex}`);
         }
 
-        const facingDirection: 1 | -1 =
-          slot.teamId === "team-2" || (room.settings.gameMode === GameMode.FreeForAll && slot.slotIndex % 2 === 1)
-            ? -1
-            : 1;
+        const facingDirection: 1 | -1 = spawn.x < map.width / 2 ? 1 : -1;
         const aimElevationDegrees = 45;
 
         return {

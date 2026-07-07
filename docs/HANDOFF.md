@@ -6,49 +6,54 @@
 
 ---
 
-## Current Task: Asset Integration v8
+## Current Task: Facing Direction Fix v8.1
 
 Goal:
 
 ```text
-Integrate uploaded Kenney platformer map assets and explosion spritesheets as visual assets only.
+When the active unit moves left or right, the character faces that direction, and aiming/projectile direction follows the unit's facing direction.
 ```
 
 Current status:
 
+- Asset Integration v8 passed.
+- Kenney map visuals and explosion effects are integrated.
 - ProjectileInFlight stuck bug is fixed.
 - Shot lifecycle continues correctly after impact.
 - Duel, TeamBattle, and FreeForAll should continue to work.
 - `LocalMatchClient` remains the local authority.
 - `GameScene` handles rendering and animation only.
+- Game supports keyboard movement, aiming, power charging, wind, undo, and local modes.
 
 Planned approach:
 
-- Use Kenney Pixel Platformer Farm Expansion and Kenney Pixel Platformer Industrial Expansion as visual map themes.
-- Use `Poof.png` as the normal projectile impact explosion.
-- Use `Firework.png` for stronger, KO, or match-end explosion presentation.
-- Load spritesheets in `BootScene` and create reusable Phaser animations without recreating existing animations.
-- Render repeated Kenney tiles in `TerrainRenderer` as visual decoration.
-- Keep existing projectile collision, player collision, and ground collision based on current `groundY` logic.
-- Keep all core rules in plain TypeScript and preserve `LocalMatchClient` as the local authority.
+- Ensure `MatchPlayerState` owns `facingDirection: 1 | -1` and `aimElevationDegrees`.
+- Update movement so LEFT sets `facingDirection = -1` and RIGHT sets `facingDirection = 1` during the Aiming phase.
+- Keep facing changes authoritative in core services through `LocalMatchClient`; Phaser only renders/input-drives commands.
+- Derive actual projectile angle from `facingDirection` and `aimElevationDegrees`.
+- Lock facing/angle when power charging starts so charging visuals and firing use the same direction.
+- Update `PlayerRenderer` and aim guide rendering so sprite/guide match facing direction.
+- Extend undo snapshots so undo restores `facingDirection` with x, aim, and movement distance.
+- Add tests for facing defaults, movement-facing changes, angle conversion, phase restrictions, and undo.
 
 Important constraints:
 
-- Tile collision is NOT implemented yet.
-- Destructible terrain is NOT implemented yet.
-- Collision still uses existing `groundY` and player-radius logic.
-- Core damage, turn, wind, projectile, and win-condition rules must not change.
+- Do not add backend, SignalR, database, online multiplayer, or destructible terrain.
+- Do not rewrite the project or move game rules into Phaser scenes.
+- Do not change damage, turn, wind, projectile physics, or win-condition rules beyond angle input direction.
 - Phaser remains responsible only for rendering, input, camera, and visual effects.
+- `LocalMatchClient` remains the local authority.
 
 Acceptance criteria:
 
-- `ASSET_CREDITS.md` documents Kenney Farm, Kenney Industrial, `Poof.png`, and `Firework.png`.
-- Assets exist under `public/assets/effects` and `public/assets/maps`.
-- Farm and Industrial maps render with Kenney tiles or fall back gracefully.
-- RoomScene can select Farm or Industrial when map selection is implemented.
-- Projectile impact uses Poof animation when available.
-- KO or match-end explosion can use Firework animation when available.
-- Missing explosion/tilesheet assets do not freeze or crash gameplay.
+- LEFT makes the active unit face left.
+- RIGHT makes the active unit face right.
+- Sprite visibly reflects facing direction.
+- Aim guide follows facing direction.
+- Projectile fires in facing direction.
+- UP/DOWN still mean aim higher/lower regardless of facing.
+- Undo restores `facingDirection`.
+- Core `MatchState` owns `facingDirection`; GameScene does not own gameplay rules.
 - ProjectileInFlight lifecycle regression tests continue to pass.
 - Duel, TeamBattle, and FreeForAll still work.
 - `npm run build` passes.

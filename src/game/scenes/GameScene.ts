@@ -330,6 +330,7 @@ export class GameScene extends Phaser.Scene {
     const weapon = activePlayer ? this.weaponRegistry.getWeapon(activePlayer.weaponId) : undefined;
     const angle = activePlayer?.angleDegrees ?? this.aimInput?.getAngle() ?? 0;
     const aimElevation = activePlayer?.aimElevationDegrees ?? 0;
+    const facing = activePlayer?.facingDirection === -1 ? "<-" : "->";
     const power = this.powerChargeController.getPower();
     const activeName = activePlayer?.playerName ?? "None";
     const remainingMove = activePlayer
@@ -342,13 +343,14 @@ export class GameScene extends Phaser.Scene {
       `Mode: ${state.mode}`,
       `Active: ${activeName}`,
       `Phase: ${state.phase}`,
+      `Facing: ${facing}`,
       `Aim: ${Math.round(aimElevation)} deg`,
       `Actual Angle: ${Math.round(angle)} deg`,
       `Power: ${Math.round(power)}`,
       `Move left: ${Math.round(remainingMove)} px`,
       `Undo: ${this.matchClient?.getUndoCount() ?? 0}`,
       `Wind: ${this.windService.formatWind(state.wind)}`,
-      "UP/DOWN: Aim higher/lower  |  LEFT/RIGHT: Move  |  Z: Undo",
+      "UP/DOWN: Aim higher/lower  |  LEFT/RIGHT: Move and face  |  Z: Undo",
       "SPACE: Start Power  |  SPACE again: Fire  |  ESC: Back to Room",
     ]);
 

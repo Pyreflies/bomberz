@@ -6,10 +6,13 @@ import type { ShotResolvedEvent } from "../../core/models/ShotResolvedEvent";
 import { LocalMatchClient } from "../../core/services/LocalMatchClient";
 import { MatchFactory } from "../../core/services/MatchFactory";
 import { MatchStateStore } from "../../core/services/MatchStateStore";
+import { MAX_MOVE_DISTANCE_PER_TURN } from "../../core/services/MovementService";
+import { PowerChargeController } from "../../core/services/PowerChargeController";
 import { WeaponRegistry } from "../../core/services/WeaponRegistry";
 import { AimInputController } from "../input/AimInputController";
 import { ExplosionRenderer } from "../renderers/ExplosionRenderer";
 import { PlayerRenderer } from "../renderers/PlayerRenderer";
+import { PowerBarRenderer } from "../renderers/PowerBarRenderer";
 import { ProjectileRenderer } from "../renderers/ProjectileRenderer";
 import { TerrainRenderer } from "../renderers/TerrainRenderer";
 
@@ -25,9 +28,12 @@ export class GameScene extends Phaser.Scene {
   private playerRenderer?: PlayerRenderer;
   private projectileRenderer?: ProjectileRenderer;
   private explosionRenderer?: ExplosionRenderer;
+  private powerBarRenderer?: PowerBarRenderer;
   private hudText?: Phaser.GameObjects.Text;
   private statusText?: Phaser.GameObjects.Text;
   private isAnimatingShot = false;
+  private lockedAngleDegrees = 45;
+  private readonly powerChargeController = new PowerChargeController();
   private readonly weaponRegistry = new WeaponRegistry();
 
   constructor() {
@@ -57,6 +63,7 @@ export class GameScene extends Phaser.Scene {
     this.playerRenderer = new PlayerRenderer(this);
     this.projectileRenderer = new ProjectileRenderer(this);
     this.explosionRenderer = new ExplosionRenderer(this);
+    this.powerBarRenderer = new PowerBarRenderer(this, 24, 156);
     this.aimInput = new AimInputController(this);
     this.hudText = this.add.text(24, 20, "", {
       fontFamily: "Arial",
@@ -77,7 +84,7 @@ export class GameScene extends Phaser.Scene {
     this.renderState(state);
   }
 
-  update(): void {
+  update(_time: number, deltaMilliseconds: number): void {
     if (!this.aimInput) {
       return;
     }
@@ -93,16 +100,34 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.aimInput.update();
-    this.updateActivePlayerAim(this.aimInput.getAngle());
-    this.renderState(this.getState());
+    const activePlayer = state.players.find((player) => player.slotId === state.activeSlotId);
 
-    if (this.aimInput.consumeFire()) {
-      this.fireShot();
+    if (!activePlayer || !activePlayer.isAlive) {
+      return;
     }
+
+    const deltaSeconds = deltaMilliseconds / 1000;
+
+    if (state.phase === "Aiming") {
+      const angle = this.aimInput.updateKeyboardAim();
+      this.matchClient?.updateActivePlayerAngle(angle);
+      this.moveActivePlayer(deltaSeconds);
+
+      if (this.aimInput.consumeFire()) {
+        this.startPowerCharge();
+      }
+    } else if (state.phase === "ChargingPower") {
+      this.powerChargeController.update(deltaSeconds);
+
+      if (this.aimInput.consumeFire()) {
+        this.fireChargedShot();
+      }
+    }
+
+    this.renderState(this.getState());
   }
 
-  private fireShot(): void {
+  private startPowerCharge(): void {
     const state = this.getState();
     const shooter = state.players.find((player) => player.slotId === state.activeSlotId);
 
@@ -110,16 +135,47 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    const weapon = this.weaponRegistry.getWeapon(shooter.weaponId);
+    this.lockedAngleDegrees = this.aimInput.getAngle();
+    this.powerChargeController.start(weapon.maxPower);
+    this.matchClient.startChargingPower(shooter.slotId, this.lockedAngleDegrees);
+  }
+
+  private fireChargedShot(): void {
+    const state = this.getState();
+    const shooter = state.players.find((player) => player.slotId === state.activeSlotId);
+
+    if (!shooter || !this.matchClient) {
+      return;
+    }
+
+    const power = this.powerChargeController.stop();
     this.isAnimatingShot = true;
     const event = this.matchClient.submitShot({
       matchId: state.matchId,
       shooterSlotId: shooter.slotId,
       weaponId: shooter.weaponId,
-      angleDegrees: this.aimInput.getAngle(),
-      power: this.aimInput.getPower(),
+      angleDegrees: this.lockedAngleDegrees,
+      power,
     });
 
     this.playResolvedShot(event);
+  }
+
+  private moveActivePlayer(deltaSeconds: number): void {
+    const state = this.getState();
+    const direction = this.aimInput?.getMoveDirection() ?? 0;
+
+    if (direction === 0 || !this.matchClient) {
+      return;
+    }
+
+    this.matchClient.moveActivePlayer({
+      matchId: state.matchId,
+      slotId: state.activeSlotId,
+      direction,
+      deltaSeconds,
+    });
   }
 
   private playResolvedShot(event: ShotResolvedEvent): void {
@@ -131,18 +187,6 @@ export class GameScene extends Phaser.Scene {
         this.renderState(this.getState());
       });
     });
-  }
-
-  private updateActivePlayerAim(angleDegrees: number): void {
-    const state = this.getState();
-    const updated: MatchState = {
-      ...state,
-      players: state.players.map((player) =>
-        player.slotId === state.activeSlotId ? { ...player, angleDegrees } : player,
-      ),
-    };
-
-    this.store?.setState(updated);
   }
 
   private syncAimToActivePlayer(state: MatchState): void {
@@ -157,16 +201,24 @@ export class GameScene extends Phaser.Scene {
     this.playerRenderer?.render(state);
 
     const activePlayer = state.players.find((player) => player.slotId === state.activeSlotId);
-    const angle = this.aimInput?.getAngle() ?? activePlayer?.angleDegrees ?? 0;
-    const power = this.aimInput?.getPower() ?? 0;
+    const weapon = activePlayer ? this.weaponRegistry.getWeapon(activePlayer.weaponId) : undefined;
+    const angle = activePlayer?.angleDegrees ?? this.aimInput?.getAngle() ?? 0;
+    const power = this.powerChargeController.getPower();
     const activeName = activePlayer?.playerName ?? "None";
+    const remainingMove = activePlayer
+      ? Math.max(0, MAX_MOVE_DISTANCE_PER_TURN - activePlayer.movedDistanceThisTurn)
+      : 0;
 
+    this.powerBarRenderer?.render(power, weapon?.maxPower ?? 100, state.phase === "ChargingPower");
     this.hudText?.setText([
       `Mode: ${state.mode}`,
       `Active: ${activeName}`,
+      `Phase: ${state.phase}`,
       `Angle: ${angle} deg`,
-      `Power: ${power}`,
-      "LEFT/RIGHT angle  |  UP/DOWN power  |  SPACE fire  |  ESC room",
+      `Power: ${Math.round(power)}`,
+      `Move left: ${Math.round(remainingMove)} px`,
+      "UP/DOWN: Aim  |  LEFT/RIGHT: Move",
+      "SPACE: Start Power  |  SPACE again: Fire  |  ESC: Back to Room",
     ]);
 
     if (state.phase === "MatchEnded") {

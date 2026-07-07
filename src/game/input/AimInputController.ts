@@ -1,12 +1,12 @@
 import Phaser from "phaser";
-import { clamp } from "../../shared/math";
+import { AimController } from "../../core/services/AimController";
 
 export class AimInputController {
   private readonly cursors: Phaser.Types.Input.Keyboard.CursorKeys;
   private readonly fireKey: Phaser.Input.Keyboard.Key;
   private readonly escapeKey: Phaser.Input.Keyboard.Key;
+  private readonly aimController = new AimController();
   private angleDegrees = 45;
-  private power = 60;
 
   constructor(scene: Phaser.Scene) {
     if (!scene.input.keyboard) {
@@ -26,26 +26,28 @@ export class AimInputController {
     return this.angleDegrees;
   }
 
-  getPower(): number {
-    return this.power;
-  }
-
-  update(): void {
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.left)) {
-      this.angleDegrees = clamp(this.angleDegrees + 2, 0, 180);
-    }
-
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.right)) {
-      this.angleDegrees = clamp(this.angleDegrees - 2, 0, 180);
-    }
-
+  updateKeyboardAim(): number {
     if (Phaser.Input.Keyboard.JustDown(this.cursors.up)) {
-      this.power = clamp(this.power + 2, 1, 100);
+      this.angleDegrees = this.aimController.increaseAngle(this.angleDegrees);
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.cursors.down)) {
-      this.power = clamp(this.power - 2, 1, 100);
+      this.angleDegrees = this.aimController.decreaseAngle(this.angleDegrees);
     }
+
+    return this.angleDegrees;
+  }
+
+  getMoveDirection(): -1 | 0 | 1 {
+    if (this.cursors.left.isDown && !this.cursors.right.isDown) {
+      return -1;
+    }
+
+    if (this.cursors.right.isDown && !this.cursors.left.isDown) {
+      return 1;
+    }
+
+    return 0;
   }
 
   consumeFire(): boolean {

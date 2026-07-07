@@ -38,7 +38,7 @@ export class PlayerRenderer {
       view.aimLine.setVisible(isActive && player.isAlive);
 
       const radians = (player.angleDegrees * Math.PI) / 180;
-      view.aimLine.setTo(0, 0, Math.cos(radians) * 48, -Math.sin(radians) * 48);
+      view.aimLine.setTo(0, 0, Math.cos(radians) * 100, -Math.sin(radians) * 100);
       view.aimLine.setPosition(player.x, player.y);
     }
   }

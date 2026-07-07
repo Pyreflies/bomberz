@@ -1,10 +1,13 @@
 import { maps } from "../data/maps";
+import { gameplayTuning } from "../data/gameplayTuning";
 import type { MatchState } from "../models/MatchState";
+import type { MoveCommand } from "../models/MoveCommand";
 import type { ShotCommand } from "../models/ShotCommand";
 import type { ShotResolvedEvent } from "../models/ShotResolvedEvent";
 import { clamp } from "../../shared/math";
 import { DamageCalculator } from "./DamageCalculator";
 import type { MatchStateStore } from "./MatchStateStore";
+import { MovementService } from "./MovementService";
 import { ProjectileSimulator } from "./ProjectileSimulator";
 import { TeamResolver } from "./TeamResolver";
 import { TerrainCollisionService } from "./TerrainCollisionService";
@@ -18,6 +21,7 @@ export class LocalMatchClient {
   private readonly projectileSimulator = new ProjectileSimulator();
   private readonly terrainCollisionService = new TerrainCollisionService();
   private readonly damageCalculator = new DamageCalculator(new TeamResolver());
+  private readonly movementService = new MovementService();
   private readonly turnOrderService = new TurnOrderService();
   private readonly winConditionChecker = new WinConditionChecker();
 
@@ -25,11 +29,54 @@ export class LocalMatchClient {
     this.store = store;
   }
 
-  submitShot(command: ShotCommand): ShotResolvedEvent {
+  updateActivePlayerAngle(angleDegrees: number): MatchState {
     const state = this.store.getState();
 
     if (state.phase !== "Aiming") {
-      throw new Error("Cannot shoot outside the aiming phase");
+      return state;
+    }
+
+    const nextState: MatchState = {
+      ...state,
+      players: state.players.map((player) =>
+        player.slotId === state.activeSlotId ? { ...player, angleDegrees: clamp(angleDegrees, 0, 180) } : player,
+      ),
+    };
+
+    this.store.setState(nextState);
+    return nextState;
+  }
+
+  startChargingPower(slotId: string, lockedAngleDegrees: number): MatchState {
+    const state = this.store.getState();
+
+    if (state.phase !== "Aiming" || state.activeSlotId !== slotId) {
+      return state;
+    }
+
+    const nextState: MatchState = {
+      ...state,
+      phase: "ChargingPower",
+      players: state.players.map((player) =>
+        player.slotId === slotId ? { ...player, angleDegrees: clamp(lockedAngleDegrees, 0, 180) } : player,
+      ),
+    };
+
+    this.store.setState(nextState);
+    return nextState;
+  }
+
+  moveActivePlayer(command: MoveCommand): MatchState {
+    const nextState = this.movementService.moveActivePlayer(this.store.getState(), command);
+    this.store.setState(nextState);
+    return nextState;
+  }
+
+  submitShot(command: ShotCommand): ShotResolvedEvent {
+    const state = this.store.getState();
+
+    if (state.phase !== "Aiming" && state.phase !== "ChargingPower") {
+      throw new Error("Cannot shoot outside the aiming or charging phase");
     }
 
     if (state.activeSlotId !== command.shooterSlotId) {
@@ -49,12 +96,13 @@ export class LocalMatchClient {
       throw new Error(`Unknown map: ${state.mapId}`);
     }
 
-    const power = clamp(command.power, 1, weapon.maxPower);
+    const displayedPower = clamp(command.power, 1, weapon.maxPower);
+    const actualPower = displayedPower * gameplayTuning.powerScale;
     const trajectory = this.projectileSimulator.simulate({
       startX: shooter.x,
       startY: shooter.y - 12,
       angleDegrees: command.angleDegrees,
-      power,
+      power: actualPower,
       speed: weapon.projectileSpeed,
       gravity: weapon.gravity,
       maxSteps: 420,
@@ -73,7 +121,8 @@ export class LocalMatchClient {
       collision.x,
       collision.y,
     );
-    const damagedState = this.applyDamageResults(state, damageResults);
+    const inFlightState: MatchState = { ...state, phase: "ProjectileInFlight" };
+    const damagedState = this.applyDamageResults(inFlightState, damageResults);
     const winResult = this.winConditionChecker.check(damagedState);
 
     if (winResult.ended) {
@@ -106,6 +155,9 @@ export class LocalMatchClient {
       turnQueue: nextQueue,
       activeSlotId: nextTurnSlotId,
       phase: "Aiming",
+      players: damagedState.players.map((player) =>
+        player.slotId === nextTurnSlotId ? { ...player, movedDistanceThisTurn: 0 } : player,
+      ),
     };
 
     this.store.setState(nextState);

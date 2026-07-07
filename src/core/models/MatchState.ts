@@ -2,7 +2,7 @@ import type { GameMode } from "./GameMode";
 import type { Team } from "./Team";
 import type { TurnQueue } from "./TurnQueue";
 
-export type MatchPhase = "Aiming" | "ProjectileInFlight" | "Resolving" | "MatchEnded";
+export type MatchPhase = "Aiming" | "ChargingPower" | "ProjectileInFlight" | "Resolving" | "MatchEnded";
 
 export interface MatchPlayerState {
   slotId: string;
@@ -15,6 +15,7 @@ export interface MatchPlayerState {
   isAlive: boolean;
   angleDegrees: number;
   weaponId: string;
+  movedDistanceThisTurn: number;
 }
 
 export interface MatchState {

@@ -62,6 +62,7 @@ export class MatchFactory {
           isAlive: true,
           angleDegrees: facesLeft ? 135 : 45,
           weaponId: slot.weaponIds[0] ?? "basic-cannon",
+          movedDistanceThisTurn: 0,
         };
       });
 

@@ -1,8 +1,10 @@
 import Phaser from "phaser";
 import { maps } from "../../core/data/maps";
 import type { MatchState } from "../../core/models/MatchState";
+import type { RoomState } from "../../core/models/RoomState";
 import type { ShotResolvedEvent } from "../../core/models/ShotResolvedEvent";
 import { LocalMatchClient } from "../../core/services/LocalMatchClient";
+import { MatchFactory } from "../../core/services/MatchFactory";
 import { MatchStateStore } from "../../core/services/MatchStateStore";
 import { WeaponRegistry } from "../../core/services/WeaponRegistry";
 import { AimInputController } from "../input/AimInputController";
@@ -12,7 +14,8 @@ import { ProjectileRenderer } from "../renderers/ProjectileRenderer";
 import { TerrainRenderer } from "../renderers/TerrainRenderer";
 
 interface GameSceneData {
-  match: MatchState;
+  room: RoomState;
+  match?: MatchState;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -32,8 +35,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   init(data: GameSceneData): void {
+    const match = data.match ?? new MatchFactory().createMatchFromRoom(data.room);
+
     this.store = new MatchStateStore();
-    this.store.setState(data.match);
+    this.store.setState(match);
     this.matchClient = new LocalMatchClient(this.store);
   }
 

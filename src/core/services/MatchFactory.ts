@@ -2,8 +2,8 @@ import { maps } from "../data/maps";
 import { GameMode, type GameMode as GameModeType } from "../models/GameMode";
 import type { MatchPlayerState, MatchState } from "../models/MatchState";
 import type { RoomState } from "../models/RoomState";
-import type { Team } from "../models/Team";
 import { createId } from "../../shared/ids";
+import { RoomFactory } from "./RoomFactory";
 import { TurnOrderService } from "./TurnOrderService";
 
 export class MatchFactory {
@@ -14,74 +14,11 @@ export class MatchFactory {
   }
 
   createLocalRoom(mode: GameModeType, playerCount: number, friendlyFireEnabled: boolean): RoomState {
-    if (mode === GameMode.Duel) {
-      return this.createRoom(GameMode.Duel, 2, true, this.createTeams(["slot-1"], ["slot-2"]));
-    }
-
-    if (mode === GameMode.TeamBattle) {
-      return this.createRoom(
-        GameMode.TeamBattle,
-        4,
-        friendlyFireEnabled,
-        this.createTeams(["slot-1", "slot-2"], ["slot-3", "slot-4"]),
-      );
-    }
-
-    return this.createRoom(GameMode.FreeForAll, Math.min(4, Math.max(2, playerCount)), true, []);
+    return new RoomFactory().createRoom(mode, playerCount, friendlyFireEnabled);
   }
 
   createDuelRoom(): RoomState {
     return this.createLocalRoom(GameMode.Duel, 2, true);
-  }
-
-  private createRoom(
-    gameMode: GameModeType,
-    playerCount: number,
-    friendlyFireEnabled: boolean,
-    teams: Team[],
-  ): RoomState {
-    return {
-      roomId: "local-room",
-      settings: {
-        gameMode,
-        maxPlayers: playerCount,
-        friendlyFireEnabled,
-        mapId: "training-field",
-      },
-      slots: Array.from({ length: playerCount }, (_, index) => {
-        const slotId = `slot-${index + 1}`;
-        return {
-          slotId,
-          slotIndex: index,
-          state: "Occupied" as const,
-          playerName: `Player ${index + 1}`,
-          teamId: this.getTeamIdForSlot(gameMode, slotId),
-          characterId: "default",
-          weaponIds: ["basic-cannon"],
-          isReady: true,
-        };
-      }),
-      teams,
-    };
-  }
-
-  private createTeams(teamOneSlots: string[], teamTwoSlots: string[]): Team[] {
-    return [
-      { teamId: "team-1", name: "Blue Team", color: 0x38bdf8, slotIds: teamOneSlots },
-      { teamId: "team-2", name: "Red Team", color: 0xfb7185, slotIds: teamTwoSlots },
-    ];
-  }
-
-  private getTeamIdForSlot(gameMode: GameModeType, slotId: string): string | null {
-    if (gameMode === GameMode.FreeForAll) {
-      return null;
-    }
-
-    if (gameMode === GameMode.Duel) {
-      return slotId === "slot-1" ? "team-1" : "team-2";
-    }
-
-    return slotId === "slot-1" || slotId === "slot-2" ? "team-1" : "team-2";
   }
 
   private getSpawnIndex(gameMode: GameModeType, slotIndex: number): number {

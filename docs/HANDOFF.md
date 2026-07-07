@@ -6,6 +6,56 @@
 
 ---
 
+## Current Task: Asset Integration v8
+
+Goal:
+
+```text
+Integrate uploaded Kenney platformer map assets and explosion spritesheets as visual assets only.
+```
+
+Current status:
+
+- ProjectileInFlight stuck bug is fixed.
+- Shot lifecycle continues correctly after impact.
+- Duel, TeamBattle, and FreeForAll should continue to work.
+- `LocalMatchClient` remains the local authority.
+- `GameScene` handles rendering and animation only.
+
+Planned approach:
+
+- Use Kenney Pixel Platformer Farm Expansion and Kenney Pixel Platformer Industrial Expansion as visual map themes.
+- Use `Poof.png` as the normal projectile impact explosion.
+- Use `Firework.png` for stronger, KO, or match-end explosion presentation.
+- Load spritesheets in `BootScene` and create reusable Phaser animations without recreating existing animations.
+- Render repeated Kenney tiles in `TerrainRenderer` as visual decoration.
+- Keep existing projectile collision, player collision, and ground collision based on current `groundY` logic.
+- Keep all core rules in plain TypeScript and preserve `LocalMatchClient` as the local authority.
+
+Important constraints:
+
+- Tile collision is NOT implemented yet.
+- Destructible terrain is NOT implemented yet.
+- Collision still uses existing `groundY` and player-radius logic.
+- Core damage, turn, wind, projectile, and win-condition rules must not change.
+- Phaser remains responsible only for rendering, input, camera, and visual effects.
+
+Acceptance criteria:
+
+- `ASSET_CREDITS.md` documents Kenney Farm, Kenney Industrial, `Poof.png`, and `Firework.png`.
+- Assets exist under `public/assets/effects` and `public/assets/maps`.
+- Farm and Industrial maps render with Kenney tiles or fall back gracefully.
+- RoomScene can select Farm or Industrial when map selection is implemented.
+- Projectile impact uses Poof animation when available.
+- KO or match-end explosion can use Firework animation when available.
+- Missing explosion/tilesheet assets do not freeze or crash gameplay.
+- ProjectileInFlight lifecycle regression tests continue to pass.
+- Duel, TeamBattle, and FreeForAll still work.
+- `npm run build` passes.
+- `npm test` passes.
+
+---
+
 ## 1. Project Goal
 
 Build a **2D web-based turn-based artillery shooter** where players aim, charge power, shoot projectiles, take explosion damage, and play in different local/online multiplayer modes.

@@ -157,6 +157,7 @@ export class GameScene extends Phaser.Scene {
     const activeName = activePlayer?.playerName ?? "None";
 
     this.hudText?.setText([
+      `Mode: ${state.mode}`,
       `Active: ${activeName}`,
       `Angle: ${angle} deg`,
       `Power: ${power}`,
@@ -164,13 +165,26 @@ export class GameScene extends Phaser.Scene {
     ]);
 
     if (state.phase === "MatchEnded") {
-      const winner = state.players.find(
-        (player) => player.slotId === state.winnerSlotId || player.teamId === state.winnerTeamId,
-      );
-      this.statusText?.setText(`Match ended: ${winner?.playerName ?? "Draw"} wins! Press ESC`);
+      this.statusText?.setText(`Match ended: ${this.getWinnerLabel(state)} wins! Press ESC`);
     } else {
       this.statusText?.setText(this.isAnimatingShot ? "Shot in flight..." : "");
     }
+  }
+
+  private getWinnerLabel(state: MatchState): string {
+    const winnerPlayer = state.players.find((player) => player.slotId === state.winnerSlotId);
+
+    if (winnerPlayer) {
+      return winnerPlayer.playerName;
+    }
+
+    const winnerTeam = state.teams.find((team) => team.teamId === state.winnerTeamId);
+
+    if (winnerTeam) {
+      return winnerTeam.name;
+    }
+
+    return "Nobody";
   }
 
   private getState(): MatchState {

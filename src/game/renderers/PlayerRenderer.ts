@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { GameMode } from "../../core/models/GameMode";
 import type { MatchPlayerState, MatchState } from "../../core/models/MatchState";
 
 interface PlayerView {
@@ -20,18 +21,20 @@ export class PlayerRenderer {
   render(state: MatchState): void {
     for (const player of state.players) {
       const view = this.views.get(player.slotId) ?? this.createView(player);
-      const color = player.teamId === "team-1" ? 0x38bdf8 : 0xfb7185;
+      const color = this.getPlayerColor(state, player);
       const hpRatio = player.hp / player.maxHp;
       const isActive = state.activeSlotId === player.slotId && state.phase !== "MatchEnded";
 
       view.body.setPosition(player.x, player.y);
+      view.body.setAlpha(player.isAlive ? 1 : 0.38);
       view.body.setFillStyle(player.isAlive ? color : 0x64748b);
       view.body.setStrokeStyle(isActive ? 4 : 2, isActive ? 0xfacc15 : 0x0f172a);
-      view.name.setText(`${player.playerName} ${player.hp}/${player.maxHp}`);
+      view.name.setText(`${player.playerName} ${player.isAlive ? `${player.hp}/${player.maxHp}` : "DOWN"}`);
       view.name.setPosition(player.x, player.y - 58);
       view.hpBack.setPosition(player.x, player.y - 36);
       view.hpFill.setPosition(player.x - 30 + 30 * hpRatio, player.y - 36);
       view.hpFill.setSize(60 * hpRatio, 7);
+      view.hpFill.setFillStyle(player.isAlive ? 0x22c55e : 0x64748b);
       view.aimLine.setVisible(isActive && player.isAlive);
 
       const radians = (player.angleDegrees * Math.PI) / 180;
@@ -54,5 +57,16 @@ export class PlayerRenderer {
 
     this.views.set(player.slotId, view);
     return view;
+  }
+
+  private getPlayerColor(state: MatchState, player: MatchPlayerState): number {
+    if (state.mode === GameMode.FreeForAll) {
+      const colors = [0x38bdf8, 0xfb7185, 0xa78bfa, 0xfbbf24];
+      const playerIndex = state.players.findIndex((candidate) => candidate.slotId === player.slotId);
+      return colors[playerIndex] ?? 0xf8fafc;
+    }
+
+    const team = state.teams.find((candidate) => candidate.teamId === player.teamId);
+    return team?.color ?? 0xf8fafc;
   }
 }

@@ -23,6 +23,18 @@ export class WinConditionChecker {
       return { ended: false };
     }
 
+    if (state.mode === GameMode.Duel) {
+      if (alivePlayers.length === 1) {
+        return {
+          ended: true,
+          winnerSlotId: alivePlayers[0]?.slotId,
+          winnerTeamId: alivePlayers[0]?.teamId ?? undefined,
+        };
+      }
+
+      return { ended: false };
+    }
+
     const livingTeams = new Set(alivePlayers.map((player) => player.teamId).filter((teamId) => teamId !== null));
 
     if (livingTeams.size === 1) {

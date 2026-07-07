@@ -1,8 +1,18 @@
+import { GameMode } from "../models/GameMode";
 import type { MatchState } from "../models/MatchState";
 import type { TurnQueue } from "../models/TurnQueue";
 
 export class TurnOrderService {
-  createInitialTurnQueue(state: Pick<MatchState, "players">): TurnQueue {
+  createInitialTurnQueue(state: Pick<MatchState, "mode" | "players">): TurnQueue {
+    if (state.mode === GameMode.TeamBattle) {
+      return {
+        orderedSlotIds: ["slot-1", "slot-3", "slot-2", "slot-4"].filter((slotId) =>
+          state.players.some((player) => player.slotId === slotId && player.isAlive),
+        ),
+        currentIndex: 0,
+      };
+    }
+
     return {
       orderedSlotIds: state.players.filter((player) => player.isAlive).map((player) => player.slotId),
       currentIndex: 0,

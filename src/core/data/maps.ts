@@ -9,7 +9,9 @@ export const maps: MapDefinition[] = [
     groundY: 560,
     spawnPoints: [
       { x: 160, y: 536, teamId: "team-1" },
+      { x: 300, y: 536, teamId: "team-1" },
       { x: 1120, y: 536, teamId: "team-2" },
+      { x: 980, y: 536, teamId: "team-2" },
     ],
   },
 ];

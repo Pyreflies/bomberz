@@ -33,7 +33,7 @@ export class PlayerRenderer {
       view.name.setPosition(player.x, player.y - 58);
       view.hpBack.setPosition(player.x, player.y - 36);
       view.hpFill.setPosition(player.x - 30 + 30 * hpRatio, player.y - 36);
-      view.hpFill.setSize(60 * hpRatio, 7);
+      view.hpFill.setSize(Math.max(0, 60 * hpRatio), 7);
       view.hpFill.setFillStyle(player.isAlive ? 0x22c55e : 0x64748b);
       view.aimLine.setVisible(isActive && player.isAlive);
 
@@ -68,5 +68,21 @@ export class PlayerRenderer {
 
     const team = state.teams.find((candidate) => candidate.teamId === player.teamId);
     return team?.color ?? 0xf8fafc;
+  }
+
+  flash(slotId: string, killed: boolean): void {
+    const view = this.views.get(slotId);
+
+    if (!view) {
+      return;
+    }
+
+    this.scene.tweens.add({
+      targets: view.body,
+      alpha: killed ? 0.2 : 0.35,
+      yoyo: true,
+      repeat: killed ? 3 : 2,
+      duration: killed ? 110 : 80,
+    });
   }
 }

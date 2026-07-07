@@ -7,6 +7,7 @@ export interface SpawnPoint {
 export interface MapDefinition {
   mapId: string;
   name: string;
+  theme: "farm" | "industrial";
   width: number;
   height: number;
   groundY: number;

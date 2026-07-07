@@ -13,6 +13,9 @@ export class PowerBarRenderer {
       fontSize: "16px",
       color: "#f8fafc",
     }).setDepth(46);
+    this.back.setScrollFactor(0);
+    this.fill.setScrollFactor(0);
+    this.label.setScrollFactor(0);
   }
 
   render(power: number, maxPower: number, isCharging: boolean): void {

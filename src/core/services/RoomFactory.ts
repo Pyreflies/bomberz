@@ -10,9 +10,14 @@ export interface RoomStartValidation {
 }
 
 export class RoomFactory {
-  createRoom(mode: GameModeType, playerCount = 4, friendlyFireEnabled = false): RoomState {
+  createRoom(
+    mode: GameModeType,
+    playerCount = 4,
+    friendlyFireEnabled = false,
+    mapId = "training-field-farm",
+  ): RoomState {
     if (mode === GameMode.Duel) {
-      return this.createRoomState(GameMode.Duel, 2, true, this.createTeams(["slot-1"], ["slot-2"]));
+      return this.createRoomState(GameMode.Duel, 2, true, this.createTeams(["slot-1"], ["slot-2"]), mapId);
     }
 
     if (mode === GameMode.TeamBattle) {
@@ -21,10 +26,11 @@ export class RoomFactory {
         4,
         friendlyFireEnabled,
         this.createTeams(["slot-1", "slot-2"], ["slot-3", "slot-4"]),
+        mapId,
       );
     }
 
-    return this.createRoomState(GameMode.FreeForAll, clamp(playerCount, 2, 4), true, []);
+    return this.createRoomState(GameMode.FreeForAll, clamp(playerCount, 2, 4), true, [], mapId);
   }
 
   toggleReady(room: RoomState, slotId: string): RoomState {
@@ -58,6 +64,7 @@ export class RoomFactory {
     playerCount: number,
     friendlyFireEnabled: boolean,
     teams: Team[],
+    mapId: string,
   ): RoomState {
     return {
       roomId: "local-room",
@@ -65,7 +72,7 @@ export class RoomFactory {
         gameMode,
         maxPlayers: playerCount,
         friendlyFireEnabled,
-        mapId: "training-field",
+        mapId,
       },
       slots: Array.from({ length: 4 }, (_, index) => this.createSlot(gameMode, index, playerCount)),
       teams,

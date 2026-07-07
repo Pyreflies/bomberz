@@ -18,7 +18,7 @@ export class RoomScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor(0x111827);
-    this.room = this.roomFactory.createRoom(GameMode.Duel, 2, false);
+    this.room = this.roomFactory.createRoom(GameMode.Duel, 2, false, "training-field-farm");
 
     this.add.text(48, 38, "Local Room", {
       fontFamily: "Arial",
@@ -76,6 +76,8 @@ export class RoomScene extends Phaser.Scene {
       this.rebuildRoom(GameMode.TeamBattle, this.room.settings.maxPlayers, !this.room.settings.friendlyFireEnabled);
     });
 
+    this.input.keyboard?.on("keydown-M", () => this.toggleMap());
+
     this.input.keyboard?.on("keydown-A", () => this.changeFreeForAllPlayerCount(-1));
     this.input.keyboard?.on("keydown-LEFT", () => this.changeFreeForAllPlayerCount(-1));
     this.input.keyboard?.on("keydown-D", () => this.changeFreeForAllPlayerCount(1));
@@ -87,7 +89,7 @@ export class RoomScene extends Phaser.Scene {
     this.input.keyboard?.on("keydown-R", () => this.toggleReady("slot-4"));
 
     this.input.keyboard?.on("keydown-ESC", () => {
-      this.room = this.roomFactory.createRoom(GameMode.Duel, 2, false);
+      this.room = this.roomFactory.createRoom(GameMode.Duel, 2, false, "training-field-farm");
       this.setStatus("Selection reset.");
       this.renderRoom();
     });
@@ -112,8 +114,21 @@ export class RoomScene extends Phaser.Scene {
   ): void {
     const nextPlayerCount = mode === GameMode.FreeForAll ? playerCount : mode === GameMode.TeamBattle ? 4 : 2;
     const nextFriendlyFire = mode === GameMode.TeamBattle ? friendlyFireEnabled : false;
-    this.room = this.roomFactory.createRoom(mode, nextPlayerCount, nextFriendlyFire);
+    this.room = this.roomFactory.createRoom(mode, nextPlayerCount, nextFriendlyFire, this.room.settings.mapId);
     this.setStatus("Ready states reset.");
+    this.renderRoom();
+  }
+
+  private toggleMap(): void {
+    const nextMapId =
+      this.room.settings.mapId === "training-field-farm" ? "training-field-industrial" : "training-field-farm";
+    this.room = this.roomFactory.createRoom(
+      this.room.settings.gameMode,
+      this.room.settings.maxPlayers,
+      this.room.settings.friendlyFireEnabled,
+      nextMapId,
+    );
+    this.setStatus("Map changed. Ready states reset.");
     this.renderRoom();
   }
 
@@ -155,6 +170,7 @@ export class RoomScene extends Phaser.Scene {
     this.controlsText?.setText([
       "Mode: 1 Duel  |  2 TeamBattle  |  3 FreeForAll",
       "FFA count: A/D or LEFT/RIGHT",
+      "Map: M toggle Farm/Industrial",
       "TeamBattle friendly fire: F",
       "Ready: Q Player 1  |  W Player 2  |  E Player 3  |  R Player 4",
       "Start: ENTER",

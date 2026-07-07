@@ -11,12 +11,17 @@ import { MAX_MOVE_DISTANCE_PER_TURN } from "../../core/services/MovementService"
 import { PowerChargeController } from "../../core/services/PowerChargeController";
 import { WeaponRegistry } from "../../core/services/WeaponRegistry";
 import { WindService } from "../../core/services/WindService";
+import { SoundController } from "../audio/SoundController";
+import { CameraController } from "../controllers/CameraController";
 import { AimInputController } from "../input/AimInputController";
 import { ExplosionRenderer } from "../renderers/ExplosionRenderer";
+import { FloatingTextRenderer } from "../renderers/FloatingTextRenderer";
 import { PlayerRenderer } from "../renderers/PlayerRenderer";
 import { PowerBarRenderer } from "../renderers/PowerBarRenderer";
 import { ProjectileRenderer } from "../renderers/ProjectileRenderer";
+import { ProjectileTrailRenderer } from "../renderers/ProjectileTrailRenderer";
 import { TerrainRenderer } from "../renderers/TerrainRenderer";
+import { TurnIndicatorRenderer } from "../renderers/TurnIndicatorRenderer";
 
 interface GameSceneData {
   room: RoomState;
@@ -29,16 +34,22 @@ export class GameScene extends Phaser.Scene {
   private aimInput?: AimInputController;
   private playerRenderer?: PlayerRenderer;
   private projectileRenderer?: ProjectileRenderer;
+  private projectileTrailRenderer?: ProjectileTrailRenderer;
   private explosionRenderer?: ExplosionRenderer;
+  private floatingTextRenderer?: FloatingTextRenderer;
+  private turnIndicatorRenderer?: TurnIndicatorRenderer;
+  private cameraController?: CameraController;
   private powerBarRenderer?: PowerBarRenderer;
   private hudText?: Phaser.GameObjects.Text;
   private statusText?: Phaser.GameObjects.Text;
   private windIndicatorText?: Phaser.GameObjects.Text;
   private isAnimatingShot = false;
+  private pendingShotEvent?: ShotResolvedEvent;
   private lockedAngleDegrees = 45;
   private readonly powerChargeController = new PowerChargeController();
   private readonly weaponRegistry = new WeaponRegistry();
   private readonly windService = new WindService();
+  private readonly soundController = new SoundController();
 
   constructor() {
     super("GameScene");
@@ -61,29 +72,34 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.cameras.main.setBackgroundColor(0x172033);
+    this.cameraController = new CameraController(this);
+    this.cameraController.configureWorld(map.width, map.height);
     this.addSkyDetails();
 
     new TerrainRenderer(this).render(map);
     this.playerRenderer = new PlayerRenderer(this);
     this.projectileRenderer = new ProjectileRenderer(this);
+    this.projectileTrailRenderer = new ProjectileTrailRenderer(this);
     this.explosionRenderer = new ExplosionRenderer(this);
+    this.floatingTextRenderer = new FloatingTextRenderer(this);
+    this.turnIndicatorRenderer = new TurnIndicatorRenderer(this);
     this.powerBarRenderer = new PowerBarRenderer(this, 24, 156);
     this.aimInput = new AimInputController(this);
     this.hudText = this.add.text(24, 20, "", {
       fontFamily: "Arial",
       fontSize: "18px",
       color: "#f8fafc",
-    }).setDepth(40);
+    }).setScrollFactor(0).setDepth(70);
     this.statusText = this.add.text(640, 86, "", {
       fontFamily: "Arial",
       fontSize: "22px",
       color: "#fde68a",
-    }).setOrigin(0.5).setDepth(40);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(80);
     this.windIndicatorText = this.add.text(640, 24, "", {
       fontFamily: "Arial",
       fontSize: "20px",
       color: "#bae6fd",
-    }).setOrigin(0.5).setDepth(40);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(80);
 
     this.store?.subscribe((updatedState) => {
       this.syncAimToActivePlayer(updatedState);
@@ -91,6 +107,8 @@ export class GameScene extends Phaser.Scene {
     });
     this.syncAimToActivePlayer(state);
     this.renderState(state);
+    this.cameraController.focusActivePlayer(state, 0);
+    this.showTurnTransition(state.activeSlotId);
   }
 
   update(_time: number, deltaMilliseconds: number): void {
@@ -103,6 +121,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.recoverIfProjectileStateStuck();
     const state = this.getState();
 
     if (state.phase === "MatchEnded" || this.isAnimatingShot) {
@@ -151,6 +170,7 @@ export class GameScene extends Phaser.Scene {
     this.lockedAngleDegrees = shooter.angleDegrees;
     this.powerChargeController.start(weapon.maxPower);
     this.matchClient.startChargingPower(shooter.slotId, this.lockedAngleDegrees);
+    this.cameraController?.focusPlayer(shooter, 220);
   }
 
   private fireChargedShot(): void {
@@ -163,6 +183,7 @@ export class GameScene extends Phaser.Scene {
 
     const power = this.powerChargeController.stop();
     this.isAnimatingShot = true;
+    this.soundController.playShotSound();
     const event = this.matchClient.submitShot({
       matchId: state.matchId,
       shooterSlotId: shooter.slotId,
@@ -170,6 +191,7 @@ export class GameScene extends Phaser.Scene {
       angleDegrees: this.lockedAngleDegrees,
       power,
     });
+    this.pendingShotEvent = event;
 
     this.playResolvedShot(event);
   }
@@ -204,14 +226,91 @@ export class GameScene extends Phaser.Scene {
 
   private playResolvedShot(event: ShotResolvedEvent): void {
     const weapon = this.weaponRegistry.getWeapon(event.weaponId);
+    let finalized = false;
+    const finalizeOnce = (): void => {
+      if (finalized) {
+        return;
+      }
+
+      finalized = true;
+      this.finalizeShotResolution(event, weapon.maxPower);
+    };
 
     this.projectileRenderer?.animate(event.trajectory, () => {
+      this.cameraController?.focusExplosion(event.explosionX, event.explosionY);
+      this.cameraController?.shakeExplosion();
+      this.soundController.playExplosionSound();
+      const explosionVariant = event.matchEnded || event.damageResults.some((result) => result.killed) ? "firework" : "poof";
       this.explosionRenderer?.play(event.explosionX, event.explosionY, weapon.explosionRadius, () => {
-        this.isAnimatingShot = false;
-        this.powerChargeController.start(weapon.maxPower);
-        this.powerChargeController.stop();
-        this.renderState(this.getState());
+        this.showDamageFeedback(event);
+        finalizeOnce();
+      }, explosionVariant);
+    }, (point) => {
+      this.cameraController?.followProjectile(point.x, point.y);
+      this.projectileTrailRenderer?.addPoint(point.x, point.y);
+    });
+
+    this.time.delayedCall(Math.max(2500, event.trajectory.length * 30), finalizeOnce);
+  }
+
+  private finalizeShotResolution(event: ShotResolvedEvent, weaponMaxPower: number): void {
+    this.isAnimatingShot = false;
+    this.pendingShotEvent = undefined;
+    this.powerChargeController.start(weaponMaxPower);
+    this.powerChargeController.stop();
+    const state = this.getState();
+
+    if (state.phase === "ProjectileInFlight") {
+      this.forceRecoveredPhase(event);
+    }
+
+    const finalizedState = this.getState();
+    this.renderState(finalizedState);
+
+    if (finalizedState.phase === "MatchEnded") {
+      this.cameraController?.focusMatchEnd(finalizedState, event.explosionX, event.explosionY);
+    } else {
+      this.cameraController?.focusActivePlayer(finalizedState);
+      this.showTurnTransition(finalizedState.activeSlotId);
+      this.soundController.playTurnSound();
+    }
+  }
+
+  private recoverIfProjectileStateStuck(): void {
+    if (this.isAnimatingShot || this.pendingShotEvent || !this.store) {
+      return;
+    }
+
+    const state = this.store.getState();
+
+    if (state.phase !== "ProjectileInFlight") {
+      return;
+    }
+
+    this.store.setState({ ...state, phase: state.winnerSlotId || state.winnerTeamId ? "MatchEnded" : "Aiming" });
+  }
+
+  private forceRecoveredPhase(event: ShotResolvedEvent): void {
+    if (!this.store) {
+      return;
+    }
+
+    const state = this.store.getState();
+
+    if (event.matchEnded) {
+      this.store.setState({
+        ...state,
+        phase: "MatchEnded",
+        winnerSlotId: event.winnerSlotId,
+        winnerTeamId: event.winnerTeamId,
       });
+      return;
+    }
+
+    this.store.setState({
+      ...state,
+      phase: "Aiming",
+      activeSlotId: event.nextTurnSlotId ?? state.activeSlotId,
     });
   }
 
@@ -225,6 +324,7 @@ export class GameScene extends Phaser.Scene {
 
   private renderState(state: MatchState): void {
     this.playerRenderer?.render(state);
+    this.turnIndicatorRenderer?.render(state);
 
     const activePlayer = state.players.find((player) => player.slotId === state.activeSlotId);
     const weapon = activePlayer ? this.weaponRegistry.getWeapon(activePlayer.weaponId) : undefined;
@@ -253,9 +353,33 @@ export class GameScene extends Phaser.Scene {
     ]);
 
     if (state.phase === "MatchEnded") {
-      this.statusText?.setText(`Match ended: ${this.getWinnerLabel(state)} wins! Press ESC`);
+      this.statusText?.setText(`${this.getWinnerLabel(state)} Wins!\nPress ESC to return to Room`);
     } else {
       this.statusText?.setText(this.isAnimatingShot ? "Shot in flight..." : "");
+    }
+  }
+
+  private showDamageFeedback(event: ShotResolvedEvent): void {
+    const state = this.getState();
+
+    for (const result of event.damageResults) {
+      const target = state.players.find((player) => player.slotId === result.targetSlotId);
+
+      if (!target) {
+        continue;
+      }
+
+      this.floatingTextRenderer?.show(target.x, target.y - 76, result.killed ? `-${result.damage} KO` : `-${result.damage}`);
+      this.playerRenderer?.flash(result.targetSlotId, result.killed);
+      this.soundController.playHitSound();
+    }
+  }
+
+  private showTurnTransition(slotId: string): void {
+    const player = this.getState().players.find((candidate) => candidate.slotId === slotId);
+
+    if (player && player.isAlive) {
+      this.turnIndicatorRenderer?.showTurnText(player.playerName);
     }
   }
 

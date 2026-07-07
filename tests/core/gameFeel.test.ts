@@ -175,6 +175,50 @@ describe("LocalMatchClient movement and charged shots", () => {
     expect(event.shooterSlotId).toBe("slot-1");
   });
 
+  it("does not leave a continuing shot in ProjectileInFlight phase", () => {
+    const store = new MatchStateStore();
+    store.setState(createDuelMatch());
+    const client = new LocalMatchClient(store);
+
+    const event = client.submitShot({
+      matchId: store.getState().matchId,
+      shooterSlotId: "slot-1",
+      weaponId: "basic-cannon",
+      angleDegrees: 45,
+      power: 20,
+    });
+
+    expect(event.matchEnded).toBe(false);
+    expect(event.nextTurnSlotId).toBe("slot-2");
+    expect(store.getState().phase).toBe("Aiming");
+  });
+
+  it("does not leave an ending shot in ProjectileInFlight phase", () => {
+    const match = createDuelMatch();
+    const lethalSetup: MatchState = {
+      ...match,
+      players: match.players.map((player) =>
+        player.slotId === "slot-2"
+          ? { ...player, x: 220, y: match.players[0]?.y ?? player.y, hp: 1 }
+          : player,
+      ),
+    };
+    const store = new MatchStateStore();
+    store.setState(lethalSetup);
+    const client = new LocalMatchClient(store);
+
+    const event = client.submitShot({
+      matchId: store.getState().matchId,
+      shooterSlotId: "slot-1",
+      weaponId: "basic-cannon",
+      angleDegrees: 0,
+      power: 20,
+    });
+
+    expect(event.matchEnded).toBe(true);
+    expect(store.getState().phase).toBe("MatchEnded");
+  });
+
   it("applies powerScale to LocalMatchClient projectiles while keeping displayed power 1-100", () => {
     const match = createDuelMatch();
     const shooter = match.players[0];
